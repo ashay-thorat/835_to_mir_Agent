@@ -1,0 +1,27 @@
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+*.egg-info/
+
+# Runtime data / health-claim files (keep private)
+data/
+input/
+generated/
+logs/
+*.pid
+
+# Node / frontend
+node_modules/
+dist/
+
+# Environment / secrets
+.env
+.env.*
+*.key
+*.pem
+
+# OS
+Thumbs.db
+.DS_Store
