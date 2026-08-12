@@ -1,128 +1,203 @@
-# 835 → MIR Converter (UI + CLI)
+# 835 → MIR Converter & AI Assistant
 
-This project converts X12 835 claim/payment data into the fixed-width MIR/MO structure reverse-engineered from the supplied production sample and proprietary MIR specification.
-
-It also ships an **agentic, terminal-based AI assistant** (`main.py`) and a **local web-based agentic chatbot** (React + FastAPI + Ollama) that understands natural language, analyzes the 835, searches/filters claims, and generates MIR files — powered entirely by a local **Ollama / Llama 3.2** model.
-
-## Local web chatbot (new)
-
-A simple "ChatGPT for your 835": upload a file in the browser, chat with a local
-Llama 3.2 agent, and download generated `.mir` files (individually or as a ZIP).
-
-- Frontend: React + Vite at `http://localhost:5173`
-- Backend: FastAPI at `http://localhost:8000`
-- AI: local Ollama / `llama3.2` only — no cloud AI, no external servers
-- Uploaded 835s and generated MIRs stay on your PC under `data/`
-
-### Setup (one time)
-
-Requirements: Python 3.12, Node.js LTS, and [Ollama](https://ollama.com).
+Convert healthcare **EDI 835** payment files into **MIR** records — using a plain-English
+AI assistant that runs 100% on your own computer. No cloud, no API keys, no data leaving
+your PC.
 
 ```
-setup.bat
+You upload a .835 file  ──►  an AI assistant understands your questions  ──►  download .mir files
 ```
 
-`setup.bat` creates `.venv`, installs Python + Node dependencies, builds the
-frontend, and pulls the `llama3.2` model into Ollama if it is missing.
+---
 
-### Start
+## What is all this? (plain English)
 
-```
-start.bat
-```
+- **835** is a standard electronic file that health insurers send to doctors/clinics to say
+  *"this is how much we paid for each claim."* It looks like lines of text with `*` separators.
+- **MIR** is a fixed-width record file (every line is a specific length) that a practice's
+  billing/accounting system needs in order to import that payment information.
+- **The AI assistant** is a chatbot powered by **Llama 3.2** (via **Ollama**). You ask
+  questions in normal language — *"find Ashay's claim"* — and it finds the data for you, or
+  generates the MIR files.
+- **Important:** the AI never sees the whole 835. It only decides *what* to do. All searching,
+  counting, and file generation is done by regular deterministic Python code, so it can never
+  invent claims or amounts.
 
-This checks/starts Ollama, launches the FastAPI backend and the Vite frontend in
-two windows, then opens `http://localhost:5173`.
+---
 
-### Using the app
+## What can you do with it?
 
-1. Click **Upload 835 File** and pick your `.835` file.
-2. The system uploads, parses, and analyzes it (you see the claim count).
-3. Chat naturally. Examples:
+| # | Feature | Best for | How to run |
+|---|---------|----------|------------|
+| 1 | **AI web app** (chatbot in your browser) | Most people | `start.bat` |
+| 2 | **AI terminal assistant** (chat in the command line) | Developers, scripting | `run-agent.bat` |
+| 3 | **Simple converter web page** (upload → download) | Quick single conversions | `run.bat` |
+| 4 | **One-line CLI converter** | Batch / automation | `python cli.py ...` |
 
-   - `Hi`
-   - `How many claims are there?`
-   - `Find Ashay's claim.`
-   - `Which claim has the highest payment?`
-   - `Find claims above 5000.`
-   - `Show me the details of claim CLM12345.`
-   - `Generate MIR for the second one.`
-   - `Generate MIR for all Ashay's claims.`
+---
 
-4. When an MIR is generated you get **[Download]** buttons for each file and a
-   **[Download All (ZIP)]** button. Downloads return the actual generated files.
-
-The status bar in the top-right shows whether Backend, Ollama, and Llama 3.2 are
-online. If Ollama is down, the UI tells you to start it instead of silently
-falling back to a cloud API.
-
-### How it works
-
-> The AI decides *what* to do; deterministic Python performs the actual work.
-
-End-to-end flow:
+## Folder structure
 
 ```
-You upload a .835 file  (POST /api/files/upload)
-        │
-        ▼
-edi835_parser.py  ── parses the 835 once into structured Claim objects
-tools/analysis.py ── builds a summary (claim count, totals, payer)
-        │
-        ▼
-You chat  (POST /api/chat)
-        │
-        ▼
-agent/ (Llama 3.2)  ── decides WHICH tool to call (search / filter /
-                        details / generate MIR). It only plans — it never
-                        touches the raw file.
-        │
-        ▼
-tools/  ── run deterministically over the parsed claims
-   search_claims.py   find "Ashay"  → matching claims
-   claim_details.py   show a claim  → formatted details
-        │
-        ▼
-convert_claims ──> existing converter.py + mir_generator.py
-                   produce the fixed-width .mir records
-        │
-        ▼
-file verified + saved under data/generated/<session>/
-        │
-        ▼
-[ Download ] buttons  (GET /api/mir/download/{file_id})
-return the ACTUAL generated .mir file (or a ZIP of several)
+835_to_mir_app/
+├── main.py            # AI terminal assistant (entry point #2)
+├── cli.py             # Command-line converter (entry point #4)
+├── app.py             # Simple converter web app (entry point #3)
+├── webapp.py          # AI web app backend (entry point #1)
+├── converter.py       # Shared conversion API (835 → MIR)
+├── edi835_parser.py   # Reads the 835 file into structured claims
+├── mir_generator.py   # Builds the fixed-width MIR records
+├── mir_mapper.py      # Maps 835 values into MIR fields
+├── mir_layout.py      # MIR field positions / lengths
+├── config.py          # All settings in one place
+├── models.py          # Claim / service / adjustment data objects
+├── api_enrichment.py  # Extra header fields derived from the 835
+├── chat.py            # Terminal chat loop
+├── agent/             # AI brain: Ollama client, prompts, supervisor, state
+├── tools/             # Deterministic actions (search, filter, convert, save)
+├── web/               # Web session handling (uploads, downloads, zips)
+├── frontend/          # React web app (the browser UI)
+├── tests/             # Automated tests
+├── input/             # Sample 835 file for testing
+├── setup.bat          # One-time installer (Windows)
+├── start.bat          # Starts the AI web app (Windows)
+├── run.bat            # Starts the simple converter (Windows)
+└── run-agent.bat      # Starts the terminal assistant (Windows)
 ```
 
-Key points:
+---
 
-- The raw 835 is parsed **once** on upload; only a small structured summary and
-  tool results are ever sent to the model — never the whole file.
-- Claim IDs, amounts, dates and names always come from the parsed 835, so the
-  AI cannot invent them.
-- "MIR generated successfully" is only reported after the file was actually
-  written and verified on disk.
-- Everything stays local: Ollama + Llama 3.2, no cloud AI, no external servers.
+## Before you start (prerequisites)
 
-### All commands (manual setup & run)
+You need these three things installed once. The Windows scripts will check for them.
 
-Prefer clicking `setup.bat` / `start.bat`? You can skip this section. These are
-the exact commands those scripts run, if you want to do it by hand.
+| Program | Why | Download / verify |
+|---------|-----|-------------------|
+| **Python 3.12** | Runs the backend | https://www.python.org/downloads/ — tick **"Add python.exe to PATH"** |
+| **Node.js LTS** | Builds the web app | https://nodejs.org/ |
+| **Ollama** | Runs the local AI model | https://ollama.com |
 
-**1. Install prerequisites**
+Verify they are installed (open a command prompt / PowerShell):
 
-- **Python 3.12** — https://www.python.org/downloads/ (tick *"Add python.exe to PATH"*)
-- **Node.js LTS** — https://nodejs.org/
-- **Ollama** — https://ollama.com
+```powershell
+py --version        # should print Python 3.12.x
+node --version      # should print v20 or newer
+ollama --version    # should print a version number
+```
 
-**2. Ollama + Llama 3.2 model (once)**
+Then pull the AI model once (this downloads ~2 GB, takes a few minutes):
 
 ```powershell
 ollama pull llama3.2
-ollama list              # confirm "llama3.2" appears
 ```
 
-**3. Python backend (once, from the project folder)**
+> **Don't have all three?** That's fine — you can still use the **simple converter** (#3) and the
+> **CLI** (#4), which only need Python.
+
+---
+
+## Quick start (Windows — easiest)
+
+1. Install the prerequisites above.
+2. Open this folder in File Explorer.
+3. **First time only:** double-click `setup.bat` (creates `.venv`, installs Python + Node
+   dependencies, builds the frontend, and makes sure Llama 3.2 is downloaded).
+4. Double-click `start.bat` every time you want to use it.
+
+Two new windows open (backend + frontend) and your browser opens at:
+
+```
+http://localhost:5173
+```
+
+That's the AI web app. Keep those windows open while you use it.
+
+---
+
+## Option 1 — Use the AI web app (recommended)
+
+1. On the page, click **Upload 835 File** and pick a `.835` file.
+2. The file is parsed and you see a claim count.
+3. Start chatting. Try these examples:
+
+| You type | The assistant does |
+|----------|--------------------|
+| `Hi` | Greets you |
+| `How many claims are there?` | Shows a summary |
+| `Find Ashay's claim.` | Searches patient names |
+| `Which claim has the highest payment?` | Filters by amount |
+| `Find claims above 5000.` | Filters by amount |
+| `Show me the details of claim CLM12345.` | Shows full claim details |
+| `Generate MIR for the second one.` | Generates one `.mir` file |
+| `Generate MIR for all Ashay's claims.` | Generates files for all matches |
+| `Convert the whole file into MIR.` | Generates one combined `.mir` file |
+
+4. When MIR files are ready you get **Download** buttons (one per file), a **Download All (ZIP)**,
+   and a **Combine into one file** option.
+
+The top-right status bar shows whether **Backend**, **Ollama**, and **Llama 3.2** are online.
+
+---
+
+## Option 2 — Use the AI terminal assistant
+
+Works without the browser — just a chat in your terminal.
+
+```
+run-agent.bat
+```
+
+(or, if you set up manually: `python main.py`)
+
+1. It asks for the path of a 835 file, e.g. `input\sample_payment.835`.
+2. It parses and analyzes the file, then shows an analysis report.
+3. Chat with the same examples as the web app. It asks *where* to save generated MIR files.
+4. System commands (start with `/`):
+
+| Command | What it does |
+|---------|--------------|
+| `/help` | Shows help |
+| `/status` | Shows file + model status |
+| `/file` | Shows details of the loaded file |
+| `/clear` | Clears the chat memory (file stays loaded) |
+| `/exit` or `bye` | Exits |
+
+---
+
+## Option 3 — Simple converter web page
+
+No AI needed — upload an 835, get a MIR back.
+
+```
+run.bat
+```
+
+Browser opens at `http://127.0.0.1:8000`. Upload → **Generate MIR** → **Download MIR**.
+
+---
+
+## Option 4 — One-line CLI converter
+
+```powershell
+python cli.py "my_payment.835" -o "output.mir"
+```
+
+If you leave out `-o`, it writes the MIR next to the input with a `.mir` extension.
+
+```
+python cli.py input\sample_payment.835
+```
+
+It prints a short summary: number of claims, service lines, and MIR records generated.
+
+---
+
+## Manual setup from scratch (all commands)
+
+Skip this if you used `setup.bat` — these are the exact commands the scripts run, so you can do
+it by hand on any OS (the batch files are Windows-only).
+
+**1. Create and activate the Python environment (once):**
 
 ```powershell
 py -3.12 -m venv .venv
@@ -131,16 +206,22 @@ python -m pip install --upgrade pip
 python -m pip install -r requirements.txt
 ```
 
-**4. Frontend (once)**
+**2. Install the frontend dependencies and build (once):**
 
 ```powershell
 pushd frontend
 npm install
-npm run build            # optional; creates frontend/dist served by the backend
+npm run build
 popd
 ```
 
-**5. Run (two terminals)**
+**3. Make sure Ollama has the model (once):**
+
+```powershell
+ollama pull llama3.2
+```
+
+**4. Run the AI web app (two terminals):**
 
 Terminal A — backend:
 
@@ -149,235 +230,139 @@ Terminal A — backend:
 python -m uvicorn webapp:app --host 127.0.0.1 --port 8000
 ```
 
-Terminal B — frontend dev server (proxies `/api` to `:8000`):
+Terminal B — frontend (dev server, proxies `/api` to the backend):
 
 ```powershell
 cd frontend
 npm run dev
 ```
 
-Open **http://localhost:5173**.
+Open **http://localhost:5173**. Stop everything with `Ctrl+C` in both terminals.
 
-**6. Stop** — press `Ctrl+C` in both terminals.
+**5. Run the simple converter manually:**
 
-**7. Run the tests**
+```powershell
+.venv\Scripts\activate
+python -m uvicorn app:app --host 127.0.0.1 --port 8000
+```
+
+Open **http://127.0.0.1:8000**.
+
+**6. Run the AI terminal assistant manually:**
+
+```powershell
+.venv\Scripts\activate
+python main.py
+```
+
+---
+
+## Run the tests
 
 ```powershell
 .venv\Scripts\activate
 python -m pytest tests -q
 ```
 
-**Other entry points**
+---
 
-| What                                  | Command / file                          |
-| ------------------------------------- | --------------------------------------- |
-| One-click start (backend+frontend+browser) | `start.bat`                        |
-| One-time full setup                    | `setup.bat`                             |
-| Terminal-only agentic assistant        | `python main.py` (or `run-agent.bat`)   |
-| Old single-page converter UI           | `run.bat` → http://127.0.0.1:8000       |
-| Plain CLI conversion                   | `python cli.py input\sample_payment.835 -o out.mir` |
+## API endpoints (for developers)
 
-### Troubleshooting
+The web app talks to a FastAPI backend at `http://127.0.0.1:8000`.
 
-- **"Frontend dependencies not found"** — `frontend\node_modules` is missing.
-  `setup.bat` and `start.bat` now install it automatically, but if it still
-  fails, run it manually and read the error output:
-  ```
-  cd frontend
-  npm install
-  ```
-- **`npm install` fails / times out** — usually a network or registry problem.
-  Retry, or use a mirror registry:
-  ```
-  cd frontend
-  npm install --registry https://registry.npmmirror.com
-  ```
-- **"Virtual environment not found"** — run `setup.bat`, or do it by hand:
-  ```
-  py -3.12 -m venv .venv
-  .venv\Scripts\activate
-  pip install -r requirements.txt
-  ```
-- **"Ollama is not running"** — start the Ollama app (or `ollama serve`) and make
-  sure the model is present: `ollama pull llama3.2`.
-- **Ports 5173 / 8000 already in use** — close the other program using them, or
-  change the ports in `frontend/vite.config.js` and in the `start.ps1` backend
-  command.
+| Method | Endpoint | What it does |
+|--------|----------|--------------|
+| `GET` | `/api/health` | Backend / Ollama / model status |
+| `POST` | `/api/files/upload` | Upload a 835, creates a session |
+| `POST` | `/api/chat` | Send a chat message to the assistant |
+| `POST` | `/api/convert/835-to-mir` | Convert the whole uploaded file |
+| `GET` | `/api/mir/download/{file_id}` | Download a generated file |
+| `POST` | `/api/mir/zip` | Bundle generated files into a ZIP |
+| `POST` | `/api/mir/combine` | Combine generated files into one MIR |
 
-### Sharing this project with another person
+---
 
-Zip the project folder **excluding** the machine-specific / generated folders.
-They contain absolute paths for your PC and would break on another machine:
-
-Excluded when zipping:
-
-- `.venv`                  — recreated by `setup.bat`
-- `frontend/node_modules`  — recreated by `setup.bat`
-- `__pycache__`, `.pytest_cache`
-- `logs`, `data`, `output`, `generated`
-
-Keep everything else, especially `input/sample_payment.835` (a ready test file),
-all `.py` files, `frontend/`, `setup.bat` and `start.bat`.
-
-The other person must install:
-
-1. **Python 3.12** — https://www.python.org/downloads/ (tick *"Add python.exe to PATH"*)
-2. **Node.js LTS** — https://nodejs.org/
-3. **Ollama** — https://ollama.com , then pull the model:
-   ```
-   ollama pull llama3.2
-   ```
-
-Then:
+## How it works
 
 ```
-setup.bat        (one time: creates .venv, installs deps, verifies Ollama/model)
-start.bat        (starts Ollama, backend, frontend, opens the browser)
+Upload .835
+    │
+    ▼
+edi835_parser.py  ── parses the file once into structured Claim objects
+    │
+    ▼
+tools/analysis.py ── builds a summary (claim count, totals, payer)
+    │
+    ▼
+You chat ──► agent/ (Llama 3.2) decides WHICH tool to call
+              (it only plans; it never touches the raw file)
+    │
+    ▼
+tools/ run the work deterministically:
+   search_claims.py   "find Ashay"       → matching claims
+   filter_claims.py   "claims above 5000" → matching claims
+   claim_details.py   "show claim"       → formatted details
+    │
+    ▼
+convert_claims ──► converter.py + mir_generator.py build fixed-width .mir records
+    │
+    ▼
+File written to disk + verified ──► Download buttons appear
 ```
 
-Everything runs locally on their PC at `http://localhost:5173`. If a required
-tool is missing, the scripts print a clear message instead of failing silently.
+Design principle: **the AI decides *what* to do; deterministic Python does the work.**
+The raw 835 is never sent to the model — only a small structured summary.
 
-## Agentic terminal assistant
+---
 
-```
+## Configuration
 
-Requirements: Python 3.12, [Ollama](https://ollama.com) installed, and the model pulled:
+Everything you might want to change lives in **`config.py`**:
 
-```
-ollama pull llama3.2
-```
+- `OLLAMA_MODEL` — the local AI model (default `llama3.2`)
+- `MIR_HEADER_LENGTH`, `MIR_SERVICE_BLOCK_LENGTH` — fixed record sizes
+- `MAX_SERVICE_LINES_PER_RECORD` — claims split into extra records after this many lines
+- `MEMBER_ID_LENGTH`, field lengths, amount formatting
+- `APP_HOST` / `APP_PORT` — server address and port
 
-Then run:
+MIR field positions and lengths live in **`mir_layout.py`**. Business rules stay out of the
+converter logic so a format change is one edit in one file.
 
-```
-python main.py
-```
+---
 
-Or double-click `run-agent.bat`. You will be asked for the path of a local 835 file, the file is parsed and analyzed, and a conversational session starts:
+## Troubleshooting
 
-```
-> Find Ashay's claim.
-I found 2 matching claims:
-1. 86520262053343501 — paid 87.50
-2. 86520262053343502 — paid 400.00
+| Problem | Fix |
+|---------|-----|
+| "Python launcher py was not found" | Install Python 3.12 and tick "Add python.exe to PATH" |
+| "Node.js was not found" | Install Node.js LTS from https://nodejs.org/ |
+| "Ollama was not found" / "Ollama is not running" | Install https://ollama.com, start the Ollama app, then `ollama pull llama3.2` |
+| "Frontend dependencies not found" | `cd frontend` then `npm install` |
+| `npm install` fails / times out | Network/registry issue — retry, or use a mirror: `npm install --registry https://registry.npmmirror.com` |
+| Port 5173 or 8000 already in use | Close the other program, or change ports in `frontend/vite.config.js` and `config.py` |
+| "No 835 structure detected" | The file isn't a valid 835, or has no `CLP` segments |
 
-> Generate MIR for the second one.
-Where would you like me to save the generated MIR file?
-> C:\MIR\ashay_claim.mir
-MIR generated successfully. Saved to: C:\MIR\ashay_claim.mir
-```
+---
 
-Supported capabilities:
+## Privacy
 
-- Greetings / general conversation
-- File summary: `How many claims are there?`
-- Search: `Find Ashay's claim.`
-- Filter: `claims above 5000`
-- Claim details: `Show me claim CLM12345.`
-- MIR generation for one or many claims, with an interactive output-path
-  prompt, directory creation, and overwrite confirmation (files are never
-  silently overwritten)
-- Context: "the second one" / "it" resolve against the last search/filter
-  selection
-- System commands: `/help  /status  /file  /clear  /exit` (or `bye`)
+Everything runs **locally** on your machine:
 
-## Design principle
+- The AI model (Llama 3.2) runs through Ollama on `127.0.0.1:11434` — no cloud AI.
+- Uploaded 835s and generated MIRs stay on your PC under `data/`.
+- If Ollama is down, the UI tells you to start it — it never silently falls back to a cloud API.
 
-> The AI decides what to do; deterministic software does the actual data processing.
+---
 
-The Llama 3.2 agent only plans (which tool, what arguments). Every claim
-search, amount, count, MIR record and file path is produced by deterministic
-Python code, so the agent can never invent claims or claim it saved a file it
-did not write. The raw 835 is never sent to the LLM — only a structured
-analysis summary and small tool results.
+## Notes for developers
 
-## Agentic project layout
+- Add tests under `tests/` and run `python -m pytest tests -q`.
+- Keep business constants in `config.py` and fixed positions in `mir_layout.py`.
+- Future API-sourced header fields go in `api_enrichment.py`.
+- `make_zip.ps1` builds a clean shareable ZIP of the project (excludes `.venv`, `node_modules`,
+  runtime data). Run: `powershell -ExecutionPolicy Bypass -File make_zip.ps1`
 
-```
-main.py                  entry point (startup, 835 load + analysis, chat)
-chat.py                  terminal chat loop / banner
-agent/
-  state.py               session state (selection, output path, history)
-  prompts.py             decision protocol + tool manifest
-  ollama.py              local Ollama client (Llama 3.2)
-  supervisor.py          intent → tool selection → orchestration
-tools/
-  analysis.py            835 analysis summary (session context)
-  search_claims.py       search + filter over parsed claims
-  claim_details.py       deterministic claim list/detail formatting
-  conversion.py          MIR generation wrapper (reuses converter.py)
-  validation.py          output-path validation
-  file_manager.py        directory creation + verified file writing
-```
+---
 
-Configuration for the agent lives in `config.py` (`OLLAMA_HOST`,
-`OLLAMA_MODEL`, limits, directories).
-
-## Web UI / CLI (existing converter)
-
-- Upload an 835 through a local web UI.
-- Parses CLP, NM1 QC/IL, REF 1L, DTM, SVC and CAS.
-- Generates one MIR `MO` record per claim, splitting claims into additional records after 50 service lines.
-- Populates fields confidently available/derivable from the 835.
-- Preserves unavailable/API-sourced fields as fixed-width blanks or format defaults.
-- Downloads the generated `.mir` file.
-- Also includes a CLI for batch use.
-
-## Important design rule
-
-Business constants are centralized in `config.py` and fixed positions are centralized in `mir_layout.py`. Do not scatter business constants inside converter logic.
-
-Future API-only fields belong in `api_enrichment.py`.
-
-## Windows: easiest way to run
-
-1. Install **Python 3.12** and make sure the Python launcher (`py`) is available.
-2. Extract this ZIP.
-3. Double-click `run.bat`.
-4. Your browser opens at `http://127.0.0.1:8000`.
-5. Upload the 835 and click **Generate MIR**.
-6. Click **Download MIR**.
-
-The first run installs the required Python packages into a local `.venv` folder.
-
-## Run manually
-
-```powershell
-py -3.12 -m venv .venv
-.venv\Scripts\activate
-pip install -r requirements.txt
-python -m uvicorn app:app --host 127.0.0.1 --port 8000
-```
-
-Then open `http://127.0.0.1:8000`.
-
-## CLI
-
-```powershell
-python cli.py "my835.x12" -o "output.mir"
-```
-
-## Central configuration
-
-Edit `config.py` for constants such as:
-
-- `MIR_RECORD_TYPE`
-- `MIR_HEADER_LENGTH`
-- `MIR_SERVICE_BLOCK_LENGTH`
-- `MAX_SERVICE_LINES_PER_RECORD`
-- `SERVICE_OVERFLOW_MODE` (`split` by the spreadsheet specification; `truncate` available if production confirms that behavior)
-- `MEMBER_ID_LENGTH`
-- defaults and amount formatting
-
-Edit `mir_layout.py` if a fixed MIR start position or field length changes.
-
-## Current mapping notes
-
-Known direct/derived fields include claim number, claim reference, claim status, member ID, group number, patient name, DOB, service charge, paid amount, covered charge, patient liability, service count, PR1–PR10 payment-reduction slots, and claim splitting/sequence.
-
-The two MIR header dates observed in the supplied reference MIR are intentionally blank because they do not match a reliable date source in the supplied 835. They can later be populated through `api_enrichment.py`.
-
-## Validation status
-
-This is a working **v1 converter**, not yet a production certification. It is validated against the supplied 835/MIR pair for the mapped fields and fixed record lengths. Before replacing a production MIR feed, validate another known-good 835/MIR pair and connect the missing API-sourced fields.
+*Validated against the supplied 835/MIR sample pair. Before replacing a production MIR feed,
+validate against another known-good 835/MIR pair and connect the missing API-sourced fields.*
